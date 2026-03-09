@@ -429,7 +429,7 @@ def postVideo():
     # 参数校验
     if not file_list:
         return jsonify({"code": 400, "msg": "文件列表不能为空", "data": None}), 400
-    if not account_list:
+    if type != 1 and not account_list:
         return jsonify({"code": 400, "msg": "账号列表不能为空", "data": None}), 400
     if not type:
         return jsonify({"code": 400, "msg": "平台类型不能为空", "data": None}), 400
