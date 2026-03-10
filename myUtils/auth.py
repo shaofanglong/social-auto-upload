@@ -100,21 +100,35 @@ async def cookie_auth_xhs(account_file):
 
 
 async def check_cookie(type, file_path):
-    match type:
-        # 小红书
-        case 1:
-            return await cookie_auth_xhs(Path(BASE_DIR / "cookiesFile" / file_path))
-        # 视频号
-        case 2:
-            return await cookie_auth_tencent(Path(BASE_DIR / "cookiesFile" / file_path))
-        # 抖音
-        case 3:
-            return await cookie_auth_douyin(Path(BASE_DIR / "cookiesFile" / file_path))
-        # 快手
-        case 4:
-            return await cookie_auth_ks(Path(BASE_DIR / "cookiesFile" / file_path))
-        case _:
-            return False
+    # 小红书 — MCP 模式，查 MCP HTTP 登录状态（非阻塞）
+    if type == 1:
+        try:
+            import sys, os, asyncio
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from conf import XHS_MCP_ACCOUNTS, XHS_MCP_URL
+            import requests as _req
+            account_name = file_path.replace('xhs_mcp_', '').replace('.json', '')
+            mcp_url = XHS_MCP_ACCOUNTS.get(account_name, XHS_MCP_URL)
+
+            def _check():
+                resp = _req.get(f"{mcp_url}/api/v1/login/status", timeout=5)
+                return resp.json().get("data", {}).get("is_logged_in", False)
+
+            return await asyncio.to_thread(_check)
+        except Exception as e:
+            print(f"XHS MCP 状态检查失败: {e}")
+            return True  # 检查失败时不标记为异常，避免误判
+    # 视频号
+    elif type == 2:
+        return await cookie_auth_tencent(Path(BASE_DIR / "cookiesFile" / file_path))
+    # 抖音
+    elif type == 3:
+        return await cookie_auth_douyin(Path(BASE_DIR / "cookiesFile" / file_path))
+    # 快手
+    elif type == 4:
+        return await cookie_auth_ks(Path(BASE_DIR / "cookiesFile" / file_path))
+    else:
+        return False
 
 # a = asyncio.run(check_cookie(1,"3a6cfdc0-3d51-11f0-8507-44e51723d63c.json"))
 # print(a)

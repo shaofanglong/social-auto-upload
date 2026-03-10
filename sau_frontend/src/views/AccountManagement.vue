@@ -286,27 +286,110 @@
           </div>
         </el-tab-pane>
         
-        <el-tab-pane label="小红书" name="xiaohongshu">
+        <el-tab-pane label="小红书(MCP)" name="xiaohongshu">
           <div class="account-list-container">
-            <div class="account-search">
-              <el-input
-                v-model="searchKeyword"
-                placeholder="输入名称或账号搜索"
-                prefix-icon="Search"
-                clearable
-                @clear="handleSearch"
-                @input="handleSearch"
-              />
-              <div class="action-buttons">
-                <el-button type="primary" @click="handleAddAccount">添加账号</el-button>
-                <el-button type="info" @click="fetchAccounts" :loading="false">
-                  <el-icon :class="{ 'is-loading': appStore.isAccountRefreshing }"><Refresh /></el-icon>
-                  <span v-if="appStore.isAccountRefreshing">刷新中</span>
-                </el-button>
-              </div>
+            <!-- MCP 说明提示 -->
+            <el-alert
+              title="小红书账号由 xiaohongshu-mcp 服务管理，需先启动 MCP 服务再扫码登录"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 16px"
+            />
+
+            <div class="action-buttons" style="margin-bottom: 16px; display:flex; gap:8px">
+              <el-button type="primary" @click="handleXhsMcpLogin()">
+                <el-icon><Plus /></el-icon>
+                MCP 扫码登录
+              </el-button>
+              <el-button type="info" @click="refreshXhsMcpStatus" :loading="xhsMcpLoading">
+                <el-icon :class="{ 'is-loading': xhsMcpLoading }"><Refresh /></el-icon>
+                刷新状态
+              </el-button>
             </div>
-            
-            <div v-if="filteredXiaohongshuAccounts.length > 0" class="account-list">
+
+            <!-- MCP 账号状态表 -->
+            <el-table :data="xhsMcpAccounts" style="width: 100%" v-loading="xhsMcpLoading">
+              <el-table-column prop="name" label="账号名称" width="180" />
+              <el-table-column prop="url" label="MCP 地址" width="220" />
+              <el-table-column label="服务状态" width="120">
+                <template #default="scope">
+                  <el-tag :type="scope.row.online ? 'success' : 'danger'" effect="plain">
+                    {{ scope.row.online ? '运行中' : '未启动' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="登录状态" width="120">
+                <template #default="scope">
+                  <el-tag :type="scope.row.logged_in ? 'success' : 'warning'" effect="plain">
+                    {{ scope.row.logged_in ? '已登录' : '未登录' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作">
+                <template #default="scope">
+                  <el-button size="small" type="success" :disabled="scope.row.online"
+                    @click="handleXhsMcpStart(scope.row)">启动服务</el-button>
+                  <el-button size="small" type="warning" :disabled="!scope.row.online"
+                    @click="handleXhsMcpStop(scope.row)">停止服务</el-button>
+                  <el-button size="small" type="primary" :disabled="!scope.row.online"
+                    @click="handleXhsMcpLogin(scope.row.name)">扫码登录</el-button>
+                  <el-button size="small" type="danger"
+                    :disabled="!scope.row.online || !scope.row.logged_in"
+                    @click="handleXhsMcpLogout(scope.row)">退出登录</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <!-- 未启动提示 -->
+            <el-alert v-if="xhsMcpAccounts.some(a => !a.online)" style="margin-top:16px"
+              type="warning" :closable="false" show-icon>
+              <template #title>有 MCP 实例未启动，请执行以下命令：</template>
+              <div v-for="acc in xhsMcpAccounts.filter(a => !a.online)" :key="acc.name" style="margin-top:6px">
+                <el-tag type="warning">{{ acc.name }}</el-tag>
+                <code style="margin-left:8px;background:#f5f7fa;padding:2px 6px;border-radius:3px">
+                  cd D:\xiaohongshu-mcp &amp;&amp; go run . --port {{ acc.url.split(':').pop() }}
+                </code>
+              </div>
+            </el-alert>
+
+            <!-- MCP 账号配置编辑 -->
+            <el-card style="margin-top:20px">
+              <template #header>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <span>MCP 账号配置</span>
+                  <div>
+                    <el-button size="small" type="primary" @click="addMcpConfigRow">添加账号</el-button>
+                    <el-button size="small" type="success" @click="saveMcpConfig" :loading="mcpConfigSaving">保存配置</el-button>
+                  </div>
+                </div>
+              </template>
+              <el-table :data="mcpConfigList" style="width:100%">
+                <el-table-column label="账号名称" min-width="160">
+                  <template #default="scope">
+                    <el-input v-model="scope.row.name" placeholder="账号名称" size="small" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="MCP 地址" min-width="220">
+                  <template #default="scope">
+                    <el-input v-model="scope.row.url" placeholder="http://localhost:8080" size="small" />
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="80">
+                  <template #default="scope">
+                    <el-button size="small" type="danger" @click="removeMcpConfigRow(scope.$index)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div style="margin-top:12px">
+                <el-form-item label="默认 MCP 地址" style="margin:0">
+                  <el-input v-model="mcpDefaultUrl" placeholder="http://localhost:8080" style="width:260px" size="small" />
+                </el-form-item>
+              </div>
+            </el-card>
+
+            <!-- 占位（保留原列表结构以兼容 filteredXiaohongshuAccounts 计算属性） -->
+            <div v-if="false" class="account-list">
               <el-table :data="filteredXiaohongshuAccounts" style="width: 100%">
                 <el-table-column label="头像" width="80">
                   <template #default="scope">
@@ -349,15 +432,61 @@
                 </el-table-column>
               </el-table>
             </div>
-            
-            <div v-else class="empty-data">
-              <el-empty description="暂无小红书账号数据" />
-            </div>
           </div>
         </el-tab-pane>
       </el-tabs>
     </div>
     
+    <!-- 小红书 MCP 登录弹窗 -->
+    <el-dialog v-model="xhsMcpDialogVisible" title="小红书 MCP 扫码登录" width="420px"
+      :close-on-click-modal="false" :show-close="xhsMcpLoginStatus !== 'loading'">
+      <div style="margin-bottom:16px" v-if="!xhsMcpLoginStatus || xhsMcpLoginStatus === 'loading'">
+        <el-form label-width="80px">
+          <el-form-item label="选择账号">
+            <el-select v-model="xhsMcpLoginAccount" placeholder="请选择账号" style="width:100%"
+              :disabled="xhsMcpLoginStatus === 'loading'">
+              <el-option v-for="acc in xhsMcpAccounts" :key="acc.name" :label="acc.name" :value="acc.name">
+                <span>{{ acc.name }}</span>
+                <el-tag size="small" :type="acc.online ? 'success' : 'danger'" style="margin-left:8px">
+                  {{ acc.online ? '在线' : '离线' }}
+                </el-tag>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </el-form>
+      </div>
+      <div style="text-align:center;min-height:260px;display:flex;align-items:center;justify-content:center;flex-direction:column">
+        <div v-if="xhsMcpLoginStatus === 'loading'" style="color:#909399">
+          <el-icon class="is-loading" style="font-size:32px"><Refresh /></el-icon>
+          <p style="margin-top:12px">正在获取二维码，请稍候...</p>
+          <p style="font-size:12px;color:#c0c4cc">账号：{{ xhsMcpLoginAccount }}</p>
+        </div>
+        <div v-else-if="xhsMcpQrCode && !xhsMcpLoginStatus">
+          <p style="color:#606266;margin-bottom:12px">请用小红书 App 扫描二维码登录</p>
+          <p style="font-size:12px;color:#909399;margin-bottom:12px">账号：{{ xhsMcpLoginAccount }}</p>
+          <img :src="xhsMcpQrCode" style="width:200px;height:200px" alt="二维码" />
+        </div>
+        <div v-else-if="xhsMcpLoginStatus === '200'" style="color:#67c23a">
+          <el-icon style="font-size:48px"><CircleCheckFilled /></el-icon>
+          <p style="margin-top:12px">登录成功！</p>
+        </div>
+        <div v-else-if="xhsMcpLoginStatus === '500'" style="color:#f56c6c">
+          <el-icon style="font-size:48px"><CircleCloseFilled /></el-icon>
+          <p style="margin-top:12px">登录失败，请检查 MCP 服务是否已启动</p>
+          <p style="font-size:12px;color:#909399;margin-top:8px">
+            启动命令：cd D:\xiaohongshu-mcp &amp;&amp; go run . --port 8080
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="xhsMcpDialogVisible = false" :disabled="xhsMcpLoginStatus === 'loading'">关闭</el-button>
+        <el-button type="primary" @click="startXhsMcpLogin" :loading="xhsMcpLoginStatus === 'loading'"
+          :disabled="!xhsMcpLoginAccount || xhsMcpLoginStatus === '200'">
+          {{ xhsMcpLoginStatus === 'loading' ? '连接中...' : '开始登录' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
     <!-- 添加/编辑账号对话框 -->
     <el-dialog
       v-model="dialogVisible"
@@ -428,7 +557,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { Refresh, CircleCheckFilled, CircleCloseFilled, Download, Upload, Loading } from '@element-plus/icons-vue'
+import { Refresh, CircleCheckFilled, CircleCloseFilled, Download, Upload, Loading, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { accountApi } from '@/api/account'
 import { useAccountStore } from '@/stores/account'
@@ -513,7 +642,12 @@ onMounted(() => {
   // 在后台验证所有账号
   setTimeout(() => {
     validateAllAccountsInBackground()
-  }, 100) // 稍微延迟一下，让用户看到快速加载的效果
+  }, 100)
+
+  // 自动拉取小红书 MCP 状态
+  refreshXhsMcpStatus()
+  // 加载 MCP 配置
+  loadMcpConfig()
 })
 
 // 获取平台标签类型
@@ -598,6 +732,188 @@ const accountForm = reactive({
 const rules = {
   platform: [{ required: true, message: '请选择平台', trigger: 'change' }],
   name: [{ required: true, message: '请输入账号名称', trigger: 'blur' }]
+}
+
+// ==================== 小红书 MCP 管理 ====================
+const xhsMcpAccounts = ref([])
+const xhsMcpLoading = ref(false)
+const xhsMcpDialogVisible = ref(false)
+const xhsMcpLoginAccount = ref('')
+const xhsMcpQrCode = ref('')
+const xhsMcpLoginStatus = ref('') // '' | 'loading' | '200' | '500'
+let xhsMcpEventSource = null
+
+// 刷新 MCP 状态
+const refreshXhsMcpStatus = async () => {
+  xhsMcpLoading.value = true
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 70000) // 70s timeout
+    const res = await fetch(`${baseUrl}/xhs/mcp/status`, { signal: controller.signal }).then(r => r.json())
+    clearTimeout(timer)
+    if (res.code === 200) {
+      xhsMcpAccounts.value = Object.entries(res.data).map(([name, info]) => ({ name, ...info }))
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      ElMessage.warning('MCP 状态查询超时（首次启动 Chrome 较慢，请稍后重试）')
+    } else {
+      ElMessage.error('获取 MCP 状态失败，请检查后端服务')
+    }
+  } finally {
+    xhsMcpLoading.value = false
+  }
+}
+
+// 弹出 MCP 登录对话框
+const handleXhsMcpLogin = (accountName = '') => {
+  xhsMcpLoginAccount.value = accountName || (xhsMcpAccounts.value[0]?.name || '')
+  xhsMcpQrCode.value = ''
+  xhsMcpLoginStatus.value = ''
+  xhsMcpDialogVisible.value = true
+}
+
+// 开始 MCP 登录（连接 SSE）
+const startXhsMcpLogin = () => {
+  if (!xhsMcpLoginAccount.value) {
+    ElMessage.warning('请选择账号')
+    return
+  }
+  xhsMcpQrCode.value = ''
+  xhsMcpLoginStatus.value = 'loading'
+
+  if (xhsMcpEventSource) { xhsMcpEventSource.close(); xhsMcpEventSource = null }
+
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+  const url = `${baseUrl}/xhs/mcp/login?account=${encodeURIComponent(xhsMcpLoginAccount.value)}`
+  xhsMcpEventSource = new EventSource(url)
+
+  xhsMcpEventSource.onmessage = (e) => {
+    const data = e.data.trim()
+    if (data === '200') {
+      xhsMcpLoginStatus.value = '200'
+      xhsMcpEventSource.close()
+      setTimeout(() => {
+        xhsMcpDialogVisible.value = false
+        refreshXhsMcpStatus()
+        ElMessage.success(`${xhsMcpLoginAccount.value} 登录成功`)
+      }, 1500)
+    } else if (data === '500') {
+      xhsMcpLoginStatus.value = '500'
+      xhsMcpEventSource.close()
+    } else if (data.length > 100) {
+      xhsMcpQrCode.value = data.startsWith('data:') ? data : `data:image/png;base64,${data}`
+      xhsMcpLoginStatus.value = ''
+    }
+  }
+  xhsMcpEventSource.onerror = () => {
+    xhsMcpLoginStatus.value = '500'
+    xhsMcpEventSource.close()
+    ElMessage.error('连接 MCP 服务失败，请确认服务已启动')
+  }
+}
+
+// 启动 MCP 服务
+const handleXhsMcpStart = async (account) => {
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const res = await fetch(`${baseUrl}/xhs/mcp/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: account.name })
+    }).then(r => r.json())
+    ElMessage.success(res.msg || '服务启动中...')
+    setTimeout(refreshXhsMcpStatus, 3000)
+  } catch (e) {
+    ElMessage.error('启动失败，请手动启动 MCP 服务')
+  }
+}
+
+// 停止 MCP 服务
+const handleXhsMcpStop = async (account) => {
+  try {
+    await ElMessageBox.confirm(`确认停止 ${account.name} 的 MCP 服务？`, '提示', {
+      confirmButtonText: '确认停止', cancelButtonText: '取消', type: 'warning'
+    })
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const res = await fetch(`${baseUrl}/xhs/mcp/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account: account.name })
+    }).then(r => r.json())
+    ElMessage.success(res.msg || '服务已停止')
+    setTimeout(refreshXhsMcpStatus, 1000)
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('停止失败')
+  }
+}
+
+// ==================== MCP 配置管理 ====================
+const mcpConfigList = ref([])
+const mcpDefaultUrl = ref('http://localhost:8080')
+const mcpConfigSaving = ref(false)
+
+const loadMcpConfig = async () => {
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const res = await fetch(`${baseUrl}/xhs/mcp/config`).then(r => r.json())
+    if (res.code === 200) {
+      mcpConfigList.value = res.data.accounts.map(a => ({ ...a }))
+      mcpDefaultUrl.value = res.data.defaultUrl
+    }
+  } catch (e) {
+    console.warn('加载 MCP 配置失败:', e)
+  }
+}
+
+const addMcpConfigRow = () => {
+  mcpConfigList.value.push({ name: '', url: 'http://localhost:8080' })
+}
+
+const removeMcpConfigRow = (index) => {
+  mcpConfigList.value.splice(index, 1)
+}
+
+const saveMcpConfig = async () => {
+  const invalid = mcpConfigList.value.some(a => !a.name || !a.url)
+  if (invalid) {
+    ElMessage.warning('账号名称和地址不能为空')
+    return
+  }
+  mcpConfigSaving.value = true
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const res = await fetch(`${baseUrl}/xhs/mcp/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accounts: mcpConfigList.value, defaultUrl: mcpDefaultUrl.value })
+    }).then(r => r.json())
+    if (res.code === 200) {
+      ElMessage.success(res.msg || '配置已保存')
+      refreshXhsMcpStatus()
+    } else {
+      ElMessage.error(res.msg || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败，请检查后端服务')
+  } finally {
+    mcpConfigSaving.value = false
+  }
+}
+
+// 退出 MCP 登录
+const handleXhsMcpLogout = async (account) => {
+  try {
+    await ElMessageBox.confirm(`确认退出 ${account.name} 的小红书登录？`, '提示', {
+      confirmButtonText: '确认退出', cancelButtonText: '取消', type: 'warning'
+    })
+    await fetch(`${account.url}/api/v1/login/cookies`, { method: 'DELETE' })
+    ElMessage.success(`${account.name} 已退出登录`)
+    refreshXhsMcpStatus()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('退出登录失败')
+  }
 }
 
 // SSE连接状态
@@ -750,6 +1066,12 @@ const handleReLogin = (row) => {
 
   // 立即开始登录流程
   setTimeout(() => {
+    // 小红书走 MCP 登录
+    if (row.platform === '小红书') {
+      dialogVisible.value = false
+      handleXhsMcpLogin(row.name)
+      return
+    }
     connectSSE(row.platform, row.name)
   }, 300)
 }
@@ -874,7 +1196,13 @@ const submitAccountForm = () => {
   accountFormRef.value.validate(async (valid) => {
     if (valid) {
       if (dialogType.value === 'add') {
-        // 建立SSE连接
+        // 小红书拦截：走 MCP 登录，不走旧 SSE
+        if (accountForm.platform === '小红书') {
+          dialogVisible.value = false
+          handleXhsMcpLogin(accountForm.name || '')
+          return
+        }
+        // 其他平台走 SSE 登录
         connectSSE(accountForm.platform, accountForm.name)
       } else {
         // 编辑账号逻辑

@@ -85,6 +85,30 @@
             </div>
           </div>
 
+          <!-- 图片上传区域（仅小红书显示） -->
+          <div v-if="tab.selectedPlatform === 1" class="upload-section" style="margin-top:20px">
+            <h3>图文图片 <el-tag size="small" type="info">小红书专用</el-tag></h3>
+            <div class="upload-options">
+              <el-button type="success" @click="showImageUpload(tab)" class="upload-btn">
+                <el-icon><Picture /></el-icon>
+                上传图片
+              </el-button>
+            </div>
+            
+            <!-- 已上传图片列表 -->
+            <div v-if="tab.imageList && tab.imageList.length > 0" class="uploaded-files">
+              <h4>已上传图片：</h4>
+              <div class="file-list">
+                <div v-for="(file, index) in tab.imageList" :key="index" class="file-item">
+                  <el-image :src="file.url" style="width:60px;height:60px;margin-right:8px" fit="cover" />
+                  <el-link :href="file.url" target="_blank" type="primary">{{ file.name }}</el-link>
+                  <span class="file-size">{{ (file.size / 1024 / 1024).toFixed(2) }}MB</span>
+                  <el-button type="danger" size="small" @click="removeImage(tab, index)">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- 上传选项弹窗 -->
           <el-dialog
             v-model="uploadOptionsVisible"
@@ -129,6 +153,36 @@
               <template #tip>
                 <div class="el-upload__tip">
                   支持MP4、AVI等视频格式，可上传多个文件
+                </div>
+              </template>
+            </el-upload>
+          </el-dialog>
+
+          <!-- 图片上传弹窗（小红书图文） -->
+          <el-dialog
+            v-model="imageUploadVisible"
+            title="图片上传"
+            width="600px"
+            class="local-upload-dialog"
+          >
+            <el-upload
+              class="video-upload"
+              drag
+              :auto-upload="true"
+              :action="`${apiBaseUrl}/upload`"
+              :on-success="(response, file) => handleImageUploadSuccess(response, file, currentUploadTab)"
+              :on-error="handleUploadError"
+              multiple
+              accept="image/*"
+              :headers="authHeaders"
+            >
+              <el-icon class="el-icon--upload"><Picture /></el-icon>
+              <div class="el-upload__text">
+                将图片拖到此处，或<em>点击上传</em>
+              </div>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持JPG、PNG等图片格式，可上传多张
                 </div>
               </template>
             </el-upload>
@@ -284,7 +338,8 @@
           <!-- 平台选择 -->
           <div class="platform-section">
             <h3>平台</h3>
-            <el-radio-group v-model="tab.selectedPlatform" class="platform-radios">
+            <el-radio-group v-model="tab.selectedPlatform" class="platform-radios"
+              @change="(val) => { tab.selectedAccounts = []; if(val===1) fetchXhsMcpAccounts() }">
               <el-radio 
                 v-for="platform in platforms" 
                 :key="platform.key"
@@ -491,8 +546,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { Upload, Plus, Close, Folder } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { Upload, Plus, Close, Folder, Picture } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
@@ -519,6 +574,7 @@ const appStore = useAppStore()
 // 上传相关状态
 const uploadOptionsVisible = ref(false)
 const localUploadVisible = ref(false)
+const imageUploadVisible = ref(false) // 图片上传弹窗
 const materialLibraryVisible = ref(false)
 const currentUploadTab = ref(null)
 const selectedMaterials = ref([])
@@ -540,8 +596,9 @@ const platforms = [
 const defaultTabInit = {
   name: 'tab1',
   label: '发布1',
-  fileList: [], // 后端返回的文件名列表
-  displayFileList: [], // 用于显示的文件列表
+  fileList: [], // 后端返回的视频文件列表
+  imageList: [], // 小红书图文图片列表
+  displayFileList: [], // 用于显示的视频文件列表
   selectedAccounts: [], // 选中的账号ID列表
   selectedPlatform: 1, // 选中的平台（单选）
   title: '',
@@ -581,16 +638,37 @@ const currentTab = ref(null)
 // 获取账号状态管理
 const accountStore = useAccountStore()
 
+// 小红书 MCP 账号列表（从后端拉取）
+const xhsMcpAccountList = ref([])
+const fetchXhsMcpAccounts = async () => {
+  try {
+    const res = await fetch(`${apiBaseUrl}/xhs/mcp/status`).then(r => r.json())
+    if (res.code === 200) {
+      xhsMcpAccountList.value = Object.entries(res.data).map(([name, info]) => ({
+        id: `xhs_mcp_${name}`,
+        name,
+        filePath: `xhs_mcp_${name}.json`,
+        platform: '小红书',
+        online: info.online,
+        logged_in: info.logged_in
+      }))
+    }
+  } catch (e) {
+    console.warn('获取 MCP 账号失败:', e)
+  }
+}
+
 // 根据选择的平台获取可用账号列表
 const availableAccounts = computed(() => {
-  const platformMap = {
-    3: '抖音',
-    2: '视频号',
-    1: '小红书',
-    4: '快手'
+  if (!currentTab.value) return []
+  const platform = currentTab.value.selectedPlatform
+  if (platform === 1) {
+    // 小红书：返回 MCP 账号（只显示已登录的）
+    return xhsMcpAccountList.value.filter(acc => acc.logged_in)
   }
-  const currentPlatform = currentTab.value ? platformMap[currentTab.value.selectedPlatform] : null
-  return currentPlatform ? accountStore.accounts.filter(acc => acc.platform === currentPlatform) : []
+  const platformMap = { 3: '抖音', 2: '视频号', 4: '快手' }
+  const platformName = platformMap[platform]
+  return platformName ? accountStore.accounts.filter(acc => acc.platform === platformName) : []
 })
 
 // 话题相关状态
@@ -629,30 +707,54 @@ const removeTab = (tabName) => {
 // 处理文件上传成功
 const handleUploadSuccess = (response, file, tab) => {
   if (response.code === 200) {
-    // 获取文件路径
     const filePath = response.data.path || response.data
-    // 从路径中提取文件名
-    const filename = filePath.split('/').pop()
-    
-    // 保存文件信息到fileList，包含文件路径和其他信息
+    const previewUrl = response.data.url
+      ? `${apiBaseUrl}${response.data.url}`
+      : materialApi.getMaterialPreviewUrl(filePath.split('/').pop())
+
     const fileInfo = {
       name: file.name,
-      url: materialApi.getMaterialPreviewUrl(filename), // 使用getMaterialPreviewUrl生成预览URL
+      url: previewUrl,
       path: filePath,
       size: file.size,
       type: file.type
     }
-    
-    // 添加到文件列表
+
     tab.fileList.push(fileInfo)
-    
-    // 更新显示列表
+
     tab.displayFileList = [...tab.fileList.map(item => ({
       name: item.name,
       url: item.url
     }))]
-    
+
     ElMessage.success('文件上传成功')
+  } else {
+    ElMessage.error(response.msg || '上传失败')
+  }
+}
+
+// 图片上传成功
+const handleImageUploadSuccess = (response, file, tab) => {
+  if (response.code === 200) {
+    const filePath = response.data.path || response.data
+    // 图片使用后端返回的 url 字段，确保能正确预览
+    const previewUrl = response.data.url
+      ? `${apiBaseUrl}${response.data.url}`
+      : `${apiBaseUrl}/videoFile/${filePath.split('/').pop()}`
+    const fileInfo = {
+      name: file.name,
+      url: previewUrl,
+      path: filePath,
+      size: file.size,
+      type: file.type
+    }
+
+    if (!tab.imageList) tab.imageList = []
+    const exists = tab.imageList.some(item => item.path === fileInfo.path)
+    if (!exists) {
+      tab.imageList.push(fileInfo)
+    }
+    ElMessage.success('图片上传成功')
   } else {
     ElMessage.error(response.msg || '上传失败')
   }
@@ -665,16 +767,18 @@ const handleUploadError = (error) => {
 
 // 删除已上传文件
 const removeFile = (tab, index) => {
-  // 从文件列表中删除
   tab.fileList.splice(index, 1)
-  
-  // 更新显示列表
   tab.displayFileList = [...tab.fileList.map(item => ({
     name: item.name,
     url: item.url
   }))]
-  
   ElMessage.success('文件删除成功')
+}
+
+// 删除已上传图片
+const removeImage = (tab, index) => {
+  if (!tab.imageList) return
+  tab.imageList.splice(index, 1)
 }
 
 // 话题相关方法
@@ -749,6 +853,10 @@ const removeAccount = (tab, index) => {
 
 // 获取账号显示名称
 const getAccountDisplayName = (accountId) => {
+  // 先查 XHS MCP 账号
+  const mcpAcc = xhsMcpAccountList.value.find(a => a.id === accountId)
+  if (mcpAcc) return mcpAcc.name
+  // 再查普通账号
   const account = accountStore.accounts.find(acc => acc.id === accountId)
   return account ? account.name : accountId
 }
@@ -768,10 +876,17 @@ const confirmPublish = async (tab) => {
   tab.publishing = true // 设置发布状态为进行中
 
   // 数据验证
-  if (tab.fileList.length === 0) {
-    ElMessage.error('请先上传视频文件')
+  const hasVideo = tab.fileList.length > 0
+  const hasImages = tab.imageList && tab.imageList.length > 0
+  if (!hasVideo && !hasImages) {
+    ElMessage.error('请先上传视频或图片')
     tab.publishing = false
-    throw new Error('请先上传视频文件')
+    throw new Error('请先上传视频或图片')
+  }
+  if (hasVideo && hasImages) {
+    ElMessage.error('请勿同时上传视频和图片')
+    tab.publishing = false
+    throw new Error('请勿同时上传视频和图片')
   }
   if (!tab.title.trim()) {
     ElMessage.error('请输入标题')
@@ -782,6 +897,11 @@ const confirmPublish = async (tab) => {
     ElMessage.error('请选择发布平台')
     tab.publishing = false
     throw new Error('请选择发布平台')
+  }
+  if (hasImages && tab.selectedPlatform !== 1) {
+    ElMessage.error('图片发布仅支持小红书平台')
+    tab.publishing = false
+    throw new Error('图片发布仅支持小红书平台')
   }
   if (tab.selectedAccounts.length === 0) {
     ElMessage.error('请选择发布账号')
@@ -794,11 +914,18 @@ const confirmPublish = async (tab) => {
     type: tab.selectedPlatform,
     title: tab.title,
     tags: tab.selectedTopics, // 不带#号的话题列表
-    fileList: tab.fileList.map(file => file.path), // 只发送文件路径
+    fileList: (tab.imageList && tab.imageList.length > 0)
+      ? tab.imageList.map(file => file.path)
+      : tab.fileList.map(file => file.path), // 优先发送图片列表
     accountList: tab.selectedAccounts.map(accountId => {
+      // XHS 平台：accountId 是 xhs_mcp_{name}，直接提取账号名
+      if (tab.selectedPlatform === 1) {
+        const mcpAcc = xhsMcpAccountList.value.find(a => a.id === accountId)
+        return mcpAcc ? mcpAcc.filePath : accountId
+      }
       const account = accountStore.accounts.find(acc => acc.id === accountId)
       return account ? account.filePath : accountId
-    }), // 发送账号的文件路径
+    }),
     enableTimer: tab.scheduleEnabled ? 1 : 0,
     videosPerDay: tab.scheduleEnabled ? tab.videosPerDay || 1 : 1,
     dailyTimes: tab.scheduleEnabled ? tab.dailyTimes || ['10:00'] : ['10:00'],
@@ -811,13 +938,17 @@ const confirmPublish = async (tab) => {
 
   // 调用后端发布API（使用统一的http封装）
   try {
-    const data = await http.post('/postVideo', publishData)
+    // 小红书图文发布走 /postImage 接口
+    const isXhsImage = tab.selectedPlatform === 1 && tab.imageList && tab.imageList.length > 0
+    const apiPath = isXhsImage ? '/postImage' : '/postVideo'
+    const data = await http.post(apiPath, publishData)
     tab.publishStatus = {
       message: '发布成功',
       type: 'success'
     }
     // 清空当前tab的数据
     tab.fileList = []
+    tab.imageList = []
     tab.displayFileList = []
     tab.title = ''
     tab.selectedTopics = []
@@ -825,8 +956,13 @@ const confirmPublish = async (tab) => {
     tab.scheduleEnabled = false
   } catch (error) {
     console.error('发布错误:', error)
+    // 小红书 MCP 服务未启动时给出明确提示
+    let msg = error.message || '请检查网络连接'
+    if (tab.selectedPlatform === 1 && (msg.includes('连接') || msg.includes('connect'))) {
+      msg = '小红书 MCP 服务未启动，请先执行：cd D:\\xiaohongshu-mcp && go run . --port 8080'
+    }
     tab.publishStatus = {
-      message: `发布失败：${error.message || '请检查网络连接'}`,
+      message: `发布失败：${msg}`,
       type: 'error'
     }
     throw error
@@ -839,6 +975,12 @@ const confirmPublish = async (tab) => {
 const showUploadOptions = (tab) => {
   currentUploadTab.value = tab
   uploadOptionsVisible.value = true
+}
+
+// 显示图片上传
+const showImageUpload = (tab) => {
+  currentUploadTab.value = tab
+  imageUploadVisible.value = true
 }
 
 // 选择本地上传
@@ -909,6 +1051,7 @@ const confirmMaterialSelection = () => {
   
   const addedCount = selectedMaterials.value.length
   materialLibraryVisible.value = false
+  imageUploadVisible.value = false
   selectedMaterials.value = []
   currentUploadTab.value = null
   ElMessage.success(`已添加 ${addedCount} 个素材`)
@@ -996,6 +1139,10 @@ const batchPublish = async () => {
     isCancelled.value = false
   }
 }
+
+onMounted(() => {
+  fetchXhsMcpAccounts()
+})
 </script>
 
 <style lang="scss" scoped>

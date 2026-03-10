@@ -7,7 +7,7 @@
     <div class="dashboard-content">
       <el-row :gutter="20">
         <!-- 账号统计卡片 -->
-        <el-col :span="8">
+        <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-card-content">
               <div class="stat-icon">
@@ -28,7 +28,7 @@
         </el-col>
 
         <!-- 平台统计卡片 -->
-        <el-col :span="8">
+        <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-card-content">
               <div class="stat-icon platform-icon">
@@ -59,7 +59,7 @@
         </el-col>
 
         <!-- 素材统计卡片 -->
-        <el-col :span="8">
+        <el-col :span="6">
           <el-card class="stat-card">
             <div class="stat-card-content">
               <div class="stat-icon content-icon">
@@ -79,13 +79,34 @@
             </div>
           </el-card>
         </el-col>
+
+        <!-- 发布统计卡片 -->
+        <el-col :span="6">
+          <el-card class="stat-card" style="cursor:pointer" @click="navigateTo('/publish-history')">
+            <div class="stat-card-content">
+              <div class="stat-icon" style="background:linear-gradient(135deg,#f093fb,#f5576c)">
+                <el-icon><List /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ publishStats.total }}</div>
+                <div class="stat-label">发布总数</div>
+              </div>
+            </div>
+            <div class="stat-footer">
+              <div class="stat-detail">
+                <span style="color:#67c23a">成功: {{ publishStats.success }}</span>
+                <span style="color:#f56c6c">失败: {{ publishStats.failed }}</span>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
       </el-row>
 
       <!-- 快捷操作区域 -->
       <div class="quick-actions">
         <h2>快捷操作</h2>
-        <el-row :gutter="20">
-          <el-col :span="6">
+        <el-row :gutter="16">
+          <el-col :span="4">
             <el-card class="action-card" @click="navigateTo('/account-management')">
               <div class="action-icon">
                 <el-icon><UserFilled /></el-icon>
@@ -94,7 +115,7 @@
               <div class="action-desc">管理所有平台账号</div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
             <el-card class="action-card" @click="navigateTo('/material-management')">
               <div class="action-icon">
                 <el-icon><Upload /></el-icon>
@@ -103,7 +124,7 @@
               <div class="action-desc">上传和管理视频素材</div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
             <el-card class="action-card" @click="navigateTo('/publish-center')">
               <div class="action-icon">
                 <el-icon><Timer /></el-icon>
@@ -112,7 +133,16 @@
               <div class="action-desc">发布内容到各平台</div>
             </el-card>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="4">
+            <el-card class="action-card" @click="navigateTo('/publish-history')">
+              <div class="action-icon">
+                <el-icon><List /></el-icon>
+              </div>
+              <div class="action-title">发布历史</div>
+              <div class="action-desc">查看历史发布记录</div>
+            </el-card>
+          </el-col>
+          <el-col :span="4">
             <el-card class="action-card" @click="navigateTo('/about')">
               <div class="action-icon">
                 <el-icon><DataAnalysis /></el-icon>
@@ -163,7 +193,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   User, UserFilled, Platform, Document,
-  Upload, Timer, DataAnalysis
+  Upload, Timer, DataAnalysis, List
 } from '@element-plus/icons-vue'
 import { accountApi } from '@/api/account'
 import { materialApi } from '@/api/material'
@@ -174,6 +204,26 @@ const router = useRouter()
 const accountStore = useAccountStore()
 const appStore = useAppStore()
 const loading = ref(false)
+
+// 发布统计
+const publishStats = ref({ total: 0, success: 0, failed: 0 })
+
+const fetchPublishStats = async () => {
+  try {
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5409'
+    const res = await fetch(`${apiBaseUrl}/publishHistory?page=1&pageSize=500`).then(r => r.json())
+    if (res.code === 200) {
+      const list = res.data.list || []
+      publishStats.value = {
+        total: res.data.total,
+        success: list.filter(i => i.status === 1).length,
+        failed: list.filter(i => i.status === 0).length
+      }
+    }
+  } catch (e) {
+    console.warn('获取发布统计失败:', e)
+  }
+}
 
 // 账号统计数据 - 从真实数据计算
 const accountStats = computed(() => {
@@ -265,6 +315,7 @@ const fetchDashboardData = async () => {
 
 onMounted(() => {
   fetchDashboardData()
+  fetchPublishStats()
 })
 </script>
 
