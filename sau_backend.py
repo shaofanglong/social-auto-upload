@@ -976,9 +976,15 @@ def xhs_mcp_start():
         return jsonify({"code": 200, "msg": f"MCP 服务已在运行 (port {port})", "data": None})
 
     mcp_dir = r'D:\xiaohongshu-mcp'
+    go_bin_candidates = [
+        r'D:\go\bin\go.exe',
+        r'D:\go-sdk\go\bin\go.exe',
+        'go'
+    ]
+    go_bin = next((p for p in go_bin_candidates if p == 'go' or os.path.exists(p)), None)
     try:
         proc = subprocess.Popen(
-            ['go', 'run', '.', '--port', port],
+            [go_bin, 'run', '.', '--port', port],
             cwd=mcp_dir,
             creationflags=subprocess.CREATE_NEW_CONSOLE if os.name == 'nt' else 0
         )
