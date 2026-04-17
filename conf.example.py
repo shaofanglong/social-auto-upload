@@ -1,6 +1,7 @@
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.resolve()
+<<<<<<< HEAD
 LOCAL_CHROME_PATH = ""   # change me necessary！ for example C:/Program Files/Google/Chrome/Application/chrome.exe
 LOCAL_CHROME_HEADLESS = False
 
@@ -19,3 +20,9 @@ XHS_MCP_URL = "http://localhost:8080"
 
 # 小红书发布默认可见范围
 XHS_VISIBILITY = "公开可见"  # "公开可见" | "仅自己可见" | "仅互关好友可见"
+=======
+XHS_SERVER = "http://127.0.0.1:11901"  # only used by xhs-related flows
+LOCAL_CHROME_PATH = ""  # optional, e.g. C:/Program Files/Google/Chrome/Application/chrome.exe
+LOCAL_CHROME_HEADLESS = True  # default headless behavior for uploader/examples
+DEBUG_MODE = True  # default debug behavior
+>>>>>>> cccfea0232a54ad25637508ca452a537534d22fb

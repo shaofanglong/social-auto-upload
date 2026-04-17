@@ -188,9 +188,13 @@ cookiesFile
 uploadFile
 videoFile
 
+<<<<<<< HEAD
 # Playwright
 /test-results/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+=======
+/uploader/bilibili_uploader/qrcode.png
+>>>>>>> cccfea0232a54ad25637508ca452a537534d22fb
